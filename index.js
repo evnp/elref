@@ -39,20 +39,17 @@ export default class ElRef {
   constructor(root, {
     htmlAttr=`ref`,
     listAttr=`list`,
-    cache=null,
+    cache={},
     query=null,
     listQuery=null,
     selector=null,
   }={}) {
-    root = root.shadowRoot || root;
-    cache = cache || {};
-    query = query || (
-      (root, selector) => root.querySelector(selector)
-    );
-    listQuery = listQuery || (
-      (root, selector) => Array.from(root.querySelectorAll(selector))
-    );
+    // set defaults
+    root = root.shadowRoot || root; // enter shadowDOM if necessary
+    query = query || ((el, sel) => el.querySelector(sel));
+    listQuery = listQuery || ((el, sel) => [...el.querySelectorAll(sel)]);
 
+    // apply options to ElRef instance
     Object.assign(this, {
       htmlAttr,
       listAttr,
@@ -60,15 +57,19 @@ export default class ElRef {
       query,
       root,
       selector,
-      proxy: new Proxy(this, this),
     });
 
+    // set up proxy to facilitate `this.el.*` key handling
+    this.proxy = new Proxy(this, this),
+
+    // set up "reserved" methods accessible through the proxy
     this.reserved = {
       scope: this.scope.bind(this),
       select: this.select.bind(this),
       update: this.update.bind(this),
     };
 
+    // set up `this.el.list` - a sub-instance of ElRef that queries element lists
     if (listAttr) {
       this.reserved[listAttr] = new ElRef(root, {
         htmlAttr,
@@ -79,16 +80,8 @@ export default class ElRef {
       });
     }
 
+    // return proxy; ElRef instance is accessed entirely through proxy getter/setter
     return this.proxy;
-  }
-
-  /**
-   * Create a new instance of ElRef with a custom selector string
-   * @param {string} selector - the custom selector string
-   * @returns {Proxy} - the new ElRef instance (wrapped in a proxy)
-   */
-  select(selector) {
-    return new ElRef(this.root, Object.assign({}, this, {selector}));
   }
 
   /**
@@ -98,6 +91,15 @@ export default class ElRef {
    */
   scope(root) {
     return new ElRef(root, this);
+  }
+
+  /**
+   * Create a new instance of ElRef with a custom selector string
+   * @param {string} selector - the custom selector string
+   * @returns {Proxy} - the new ElRef instance (wrapped in a proxy)
+   */
+  select(selector) {
+    return new ElRef(this.root, Object.assign({}, this, {selector}));
   }
 
   /**
@@ -111,22 +113,25 @@ export default class ElRef {
       this.root,
       this.selector || `[${this.htmlAttr}="${name}"]`,
     );
-    return this.proxy;
+    return this.proxy; // maintain chainability
   }
 
   /**
-   * Check whether the current element value for `name` in the cache is valid,
-   * meaning it is still attached to the DOM under the current parent element.
+   * Get the current element(s) under `name` in the cache, if the reference is
+   * valid (still attached to the DOM under the current parent element).
+   * If invalid, re-query and update the cache, then return the element(s).
    * @param {string} name - the cached element name (cache key)
    * @returns {HTMLElement|Array.<HTMLElement>|undefined} - the resulting element(s)
    */
   getWithUpdate(name) {
-    const elements = this.cache[name];
-    const elementArray = Array.isArray(elements) ? elements : [elements];
-    const valid = !!elementArray.length
-      && elementArray.every(element => element && this.root.contains(element));
+    const cached = this.cache[name];
 
-    return valid ? elements : (this.update(name) && this.cache[name]);
+    // handle single or multi-element cached values
+    const elements = Array.isArray(cached) ? cached : [cached];
+    const valid = !!elements.length
+      && elements.every(element => element && this.root.contains(element));
+
+    return valid ? cached : (this.update(name) && this.cache[name]);
   }
 
   /**
@@ -152,6 +157,6 @@ export default class ElRef {
    */
   set(target, name, value) {
     this.reserved[name] = value;
-    return this.proxy;
+    return true; // prevent "TypeError: 'set' on proxy: trap returned falsish..."
   }
 }

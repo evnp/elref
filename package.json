@@ -1,6 +1,6 @@
 {
   "name": "elref",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Easy, lazy, cacheable sub-element querying for your custom elements",
   "main": "index.js",
   "scripts": {
