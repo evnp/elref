@@ -7,7 +7,7 @@ Adds `this.el` to a custom element, allowing the definition of internal element 
 
 `this.el` provides getters at every key that will lazily query the parent for the first child element with a matching `ref="<name>"` attribute (`undefined` if no matching children are found).
 
-`this.el.list.<key>` behaves similarily but queries for _all_ matching children and returns an array (empty array if no matching children are found).
+`this.el.list.<name>` behaves similarily but queries for _all_ matching children and returns an array (empty array if no matching children are found).
 
 Results will be cached and returned as long as they are still attached to DOM
 
