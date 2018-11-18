@@ -4,7 +4,7 @@
   "description": "Easy, lazy, cacheable sub-element querying for your custom elements",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "(sleep 1 ; open http://localhost:8080/test) & http-server"
   },
   "repository": {
     "type": "git",
@@ -15,5 +15,10 @@
   "bugs": {
     "url": "https://github.com/evnp/elref/issues"
   },
-  "homepage": "https://github.com/evnp/elref#readme"
+  "homepage": "https://github.com/evnp/elref#readme",
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "http-server": "^0.11.1",
+    "mocha": "^5.2.0"
+  }
 }
