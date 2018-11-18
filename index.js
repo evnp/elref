@@ -39,49 +39,55 @@ export default class ElRef {
   constructor(root, {
     htmlAttr=`ref`,
     listAttr=`list`,
-    cache={},
-    query=null,
-    listQuery=null,
-    selector=null,
+    isAsync=false,
+    pollMs=100,
+    cache,
+    query,
+    listQuery,
+    selector,
   }={}) {
-    // set defaults
-    root = root.shadowRoot || root; // enter shadowDOM if necessary
-    query = query || ((el, sel) => el.querySelector(sel));
-    listQuery = listQuery || ((el, sel) => [...el.querySelectorAll(sel)]);
-
-    // apply options to ElRef instance
     Object.assign(this, {
-      htmlAttr,
-      listAttr,
-      cache,
-      query,
-      root,
-      selector,
+      // set root element - enter shadow dom if necessary
+      root: root.shadowRoot || root,
+
+      // options
+      htmlAttr, listAttr, isAsync, pollMs, selector,
+      cache:     cache     || {},
+      query:     query     || ((el, sel) => el.querySelector(sel)),
+      listQuery: listQuery || ((el, sel) => [...el.querySelectorAll(sel)]),
+
+      // set up "reserved" - list of methods accessible through the proxy
+      reserved: [`scope`, `select`, `update`, `list`, `wait`],
+
+      // set up proxy to facilitate `this.el.*` key handling
+      proxy: new Proxy(this, this),
     });
-
-    // set up proxy to facilitate `this.el.*` key handling
-    this.proxy = new Proxy(this, this),
-
-    // set up "reserved" methods accessible through the proxy
-    this.reserved = {
-      scope: this.scope.bind(this),
-      select: this.select.bind(this),
-      update: this.update.bind(this),
-    };
-
-    // set up `this.el.list` - a sub-instance of ElRef that queries element lists
-    if (listAttr) {
-      this.reserved[listAttr] = new ElRef(root, {
-        htmlAttr,
-        listAttr: false,
-        cache,
-        query: listQuery,
-        selector,
-      });
-    }
 
     // return proxy; ElRef instance is accessed entirely through proxy getter/setter
     return this.proxy;
+  }
+
+  /**
+   * Create a new instance of ElRef that queries for lists of ref elements instead
+   * of returning first matching ref element.
+   * @returns {Proxy} - the new ElRef instance (wrapped in a proxy)
+   */
+  get list() {
+    return new ElRef(this.root, Object.assign({}, this, {
+      cache: null,
+      query: this.listQuery,
+    }));
+  }
+
+  /**
+   * Create a new async instance of ElRef that returns promises that can be awaited
+   * instead of returning elements directly. Allows waiting for an element to appear.
+   * @returns {Proxy} - the new ElRef instance (wrapped in a proxy)
+   */
+  get wait() {
+    return new ElRef(this.root, Object.assign({}, this, {
+      isAsync: true,
+    }));
   }
 
   /**
@@ -109,10 +115,7 @@ export default class ElRef {
    * @returns {Proxy} - the current ElRef instance's proxy (for chaining calls)
    */
   update(name) {
-    this.cache[name] = this.query(
-      this.root,
-      this.selector || `[${this.htmlAttr}="${name}"]`,
-    );
+    this.cache[name] = this.query(this.root, this.selector || `[${this.htmlAttr}="${name}"]`);
     return this.proxy; // maintain chainability
   }
 
@@ -134,6 +137,15 @@ export default class ElRef {
     return valid ? cached : (this.update(name) && this.cache[name]);
   }
 
+  getWithUpdateAsync(name) {
+    return new Promise(resolve => {
+      const query = () => handle(this.getWithUpdate(name));
+      const valid = result => !!(Array.isArray(result) ? result.length : result);
+      const handle = result => valid(result) ? resolve(result) : window.setTimeout(query, this.pollMs);
+      query();
+    });
+  }
+
   /**
    * Getter for arbitrary keys on the proxy wrapping the ElRef instance
    * @param {object} target - the ElRef instance
@@ -141,7 +153,11 @@ export default class ElRef {
    * @returns {HTMLElement|Array.<HTMLElement>|undefined} - the resulting element(s)
    */
   get(target, name) {
-    return this.reserved[name] || this.getWithUpdate(name);
+    return (
+      this.reserved.includes(name) ? this[name] :
+      this.isAsync ? this.getWithUpdateAsync(name) :
+       /* default */ this.getWithUpdate(name)
+    );
   }
 
   /**
@@ -156,7 +172,8 @@ export default class ElRef {
    * @returns {Proxy} - the current ElRef instance's proxy (for chaining calls)
    */
   set(target, name, value) {
-    this.reserved[name] = value;
+    this.reserved.push(name);
+    this[name] = value;
     return true; // prevent "TypeError: 'set' on proxy: trap returned falsish..."
   }
 }
