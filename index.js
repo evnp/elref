@@ -40,10 +40,12 @@ export default class ElRef {
     htmlAttr=`ref`,
     listAttr=`list`,
     isAsync=false,
-    pollMs=100,
-    cache,
+    pollMs=2,
+    pollMod=pollMs => pollMs *= 2,
     query,
     listQuery,
+    cache,
+    listCache,
     selector,
   }={}) {
     Object.assign(this, {
@@ -53,8 +55,10 @@ export default class ElRef {
       // options
       htmlAttr, listAttr, isAsync, pollMs, selector,
       cache:     cache     || {},
+      listCache: listCache || {},
       query:     query     || ((el, sel) => el.querySelector(sel)),
       listQuery: listQuery || ((el, sel) => [...el.querySelectorAll(sel)]),
+      pollMod:   pollMod   || (x => x), // identity; allow setting pollMod: false
 
       // set up "reserved" - list of methods accessible through the proxy
       reserved: [`scope`, `select`, `update`, `list`, `wait`],
@@ -62,6 +66,11 @@ export default class ElRef {
       // set up proxy to facilitate `this.el.*` key handling
       proxy: new Proxy(this, this),
     });
+
+    // deal with some scoping issues
+    this.scope = this.scope.bind(this);
+    this.select = this.select.bind(this);
+    this.update = this.update.bind(this);
 
     // return proxy; ElRef instance is accessed entirely through proxy getter/setter
     return this.proxy;
@@ -74,7 +83,7 @@ export default class ElRef {
    */
   get list() {
     return new ElRef(this.root, Object.assign({}, this, {
-      cache: null,
+      cache: this.listCache,
       query: this.listQuery,
     }));
   }
@@ -141,7 +150,8 @@ export default class ElRef {
     return new Promise(resolve => {
       const query = () => handle(this.getWithUpdate(name));
       const valid = result => !!(Array.isArray(result) ? result.length : result);
-      const handle = result => valid(result) ? resolve(result) : window.setTimeout(query, this.pollMs);
+      const handle = result =>
+        valid(result) ? resolve(result) : window.setTimeout(query, this.pollMod(this.pollMs));
       query();
     });
   }
